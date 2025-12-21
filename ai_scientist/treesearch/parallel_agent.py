@@ -298,9 +298,14 @@ class MinimalAgent:
     def _prompt_impl_guideline(self):
         impl_guideline = [
             "CRITICAL GPU REQUIREMENTS - Your code MUST include ALL of these:",
-            "  - At the start of your code, add these lines to handle GPU/CPU:",
+            "  - At the start of your code, add these lines to handle GPU/CPU/MPS:",
             "    ```python",
-            "    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')",
+            "    if torch.cuda.is_available():",
+            "        device = torch.device('cuda')",
+            "    elif torch.backends.mps.is_available():",
+            "        device = torch.device('mps')",
+            "    else:",
+            "        device = torch.device('cpu')",
             "    print(f'Using device: {device}')",
             "    ```",
             "  - ALWAYS move models to device using the `.to(device)` method",
@@ -1118,9 +1123,9 @@ class GPUManager:
 
 
 def get_gpu_count() -> int:
-    """Get number of available NVIDIA GPUs without using torch"""
+    """Get number of available GPUs (NVIDIA CUDA or Apple Silicon MPS)"""
     try:
-        # First try using nvidia-smi
+        # First try using nvidia-smi for NVIDIA GPUs
         nvidia_smi = subprocess.run(
             ["nvidia-smi", "--query-gpu=gpu_name", "--format=csv,noheader"],
             capture_output=True,
@@ -1135,8 +1140,54 @@ def get_gpu_count() -> int:
         if cuda_visible_devices:
             # Filter out empty strings and -1 values
             devices = [d for d in cuda_visible_devices.split(",") if d and d != "-1"]
-            return len(devices)
+            if len(devices) > 0:
+                return len(devices)
+
+        # Check for Apple Silicon MPS
+        try:
+            import torch
+
+            if torch.backends.mps.is_available():
+                return 1  # MPS presents as a single device
+        except ImportError:
+            pass
+
         return 0
+
+
+def get_device_type() -> str:
+    """Get the type of compute device available (cuda, mps, or cpu)"""
+    try:
+        # First try using nvidia-smi for NVIDIA GPUs
+        nvidia_smi = subprocess.run(
+            ["nvidia-smi", "--query-gpu=gpu_name", "--format=csv,noheader"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        gpus = nvidia_smi.stdout.strip().split("\n")
+        if len(gpus) > 0:
+            return "cuda"
+    except (subprocess.SubprocessError, FileNotFoundError):
+        pass
+
+    # Check environment variable for CUDA
+    cuda_visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES")
+    if cuda_visible_devices:
+        devices = [d for d in cuda_visible_devices.split(",") if d and d != "-1"]
+        if len(devices) > 0:
+            return "cuda"
+
+    # Check for Apple Silicon MPS
+    try:
+        import torch
+
+        if torch.backends.mps.is_available():
+            return "mps"
+    except ImportError:
+        pass
+
+    return "cpu"
 
 
 class ParallelAgent:
@@ -1167,11 +1218,14 @@ class ParallelAgent:
         self.data_preview = None
         self.num_workers = cfg.agent.num_workers
         self.num_gpus = get_gpu_count()
+        self.device_type = get_device_type()
         print(f"num_gpus: {self.num_gpus}")
         if self.num_gpus == 0:
             print("No GPUs detected, falling back to CPU-only mode")
+        elif self.device_type == "mps":
+            print(f"Detected Apple Silicon MPS device")
         else:
-            print(f"Detected {self.num_gpus} GPUs")
+            print(f"Detected {self.num_gpus} CUDA GPUs")
 
         self.gpu_manager = GPUManager(self.num_gpus) if self.num_gpus > 0 else None
 
@@ -1283,7 +1337,7 @@ class ParallelAgent:
 
             # Add seed to node code
             node_data["code"] = (
-                f"# Set random seed\nimport random\nimport numpy as np\nimport torch\n\nseed = {seed}\nrandom.seed(seed)\nnp.random.seed(seed)\ntorch.manual_seed(seed)\nif torch.cuda.is_available():\n    torch.cuda.manual_seed(seed)\n\n"
+                f"# Set random seed\nimport random\nimport numpy as np\nimport torch\n\nseed = {seed}\nrandom.seed(seed)\nnp.random.seed(seed)\ntorch.manual_seed(seed)\nif torch.cuda.is_available():\n    torch.cuda.manual_seed(seed)\nelif torch.backends.mps.is_available():\n    torch.mps.manual_seed(seed)\n\n"
                 + node_code
             )
 
