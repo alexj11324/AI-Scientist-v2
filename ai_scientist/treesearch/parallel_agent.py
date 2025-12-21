@@ -1148,10 +1148,11 @@ def get_gpu_count() -> int:
             import torch
             if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
                 return 1  # MPS presents as a single device
-        except Exception:
-            pass
-
-        return 0
+        except ImportError:
+            return 0
+        except Exception as exc:
+            logger.debug("Error while checking for Apple Silicon MPS support: %s", exc)
+            return 0
 
 
 class ParallelAgent:
