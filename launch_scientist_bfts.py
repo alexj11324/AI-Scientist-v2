@@ -137,7 +137,7 @@ def get_available_gpus(gpu_ids=None):
 
     if torch.cuda.is_available():
         return list(range(torch.cuda.device_count()))
-    elif torch.backends.mps.is_available():
+    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
         return [0]
     else:
         return []

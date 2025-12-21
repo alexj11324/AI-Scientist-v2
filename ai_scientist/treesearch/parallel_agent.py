@@ -302,7 +302,7 @@ class MinimalAgent:
             "    ```python",
             "    if torch.cuda.is_available():",
             "        device = torch.device('cuda')",
-            "    elif torch.backends.mps.is_available():",
+            "    elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():",
             "        device = torch.device('mps')",
             "    else:",
             "        device = torch.device('cpu')",
@@ -1146,7 +1146,7 @@ def get_gpu_count() -> int:
         # Check for Apple Silicon MPS with torch
         try:
             import torch
-            if torch.backends.mps.is_available():
+            if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
                 return 1  # MPS presents as a single device
         except Exception:
             pass
@@ -1298,7 +1298,7 @@ class ParallelAgent:
 
             # Add seed to node code
             node_data["code"] = (
-                f"# Set random seed\nimport random\nimport numpy as np\nimport torch\n\nseed = {seed}\nrandom.seed(seed)\nnp.random.seed(seed)\ntorch.manual_seed(seed)\nif torch.cuda.is_available():\n    torch.cuda.manual_seed(seed)\nelif torch.backends.mps.is_available():\n    torch.mps.manual_seed(seed)\n\n"
+                f"# Set random seed\nimport random\nimport numpy as np\nimport torch\n\nseed = {seed}\nrandom.seed(seed)\nnp.random.seed(seed)\ntorch.manual_seed(seed)\nif torch.cuda.is_available():\n    torch.cuda.manual_seed(seed)\nelif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():\n    torch.mps.manual_seed(seed)\n\n"
                 + node_code
             )
 
