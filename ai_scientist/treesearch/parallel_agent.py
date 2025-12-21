@@ -1123,7 +1123,7 @@ class GPUManager:
 
 
 def get_gpu_count() -> int:
-    """Get number of available GPUs (NVIDIA CUDA or Apple Silicon MPS)"""
+    """Get number of available GPUs (NVIDIA CUDA without torch or Apple Silicon MPS with torch)"""
     try:
         # First try using nvidia-smi for NVIDIA GPUs
         nvidia_smi = subprocess.run(
@@ -1143,51 +1143,15 @@ def get_gpu_count() -> int:
             if len(devices) > 0:
                 return len(devices)
 
-        # Check for Apple Silicon MPS
+        # Check for Apple Silicon MPS with torch
         try:
             import torch
-
             if torch.backends.mps.is_available():
                 return 1  # MPS presents as a single device
-        except ImportError:
+        except Exception:
             pass
 
         return 0
-
-
-def get_device_type() -> str:
-    """Get the type of compute device available (cuda, mps, or cpu)"""
-    try:
-        # First try using nvidia-smi for NVIDIA GPUs
-        nvidia_smi = subprocess.run(
-            ["nvidia-smi", "--query-gpu=gpu_name", "--format=csv,noheader"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        gpus = nvidia_smi.stdout.strip().split("\n")
-        if len(gpus) > 0:
-            return "cuda"
-    except (subprocess.SubprocessError, FileNotFoundError):
-        pass
-
-    # Check environment variable for CUDA
-    cuda_visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES")
-    if cuda_visible_devices:
-        devices = [d for d in cuda_visible_devices.split(",") if d and d != "-1"]
-        if len(devices) > 0:
-            return "cuda"
-
-    # Check for Apple Silicon MPS
-    try:
-        import torch
-
-        if torch.backends.mps.is_available():
-            return "mps"
-    except ImportError:
-        pass
-
-    return "cpu"
 
 
 class ParallelAgent:
@@ -1218,14 +1182,11 @@ class ParallelAgent:
         self.data_preview = None
         self.num_workers = cfg.agent.num_workers
         self.num_gpus = get_gpu_count()
-        self.device_type = get_device_type()
         print(f"num_gpus: {self.num_gpus}")
         if self.num_gpus == 0:
             print("No GPUs detected, falling back to CPU-only mode")
-        elif self.device_type == "mps":
-            print(f"Detected Apple Silicon MPS device")
         else:
-            print(f"Detected {self.num_gpus} CUDA GPUs")
+            print(f"Detected {self.num_gpus} GPUs")
 
         self.gpu_manager = GPUManager(self.num_gpus) if self.num_gpus > 0 else None
 
